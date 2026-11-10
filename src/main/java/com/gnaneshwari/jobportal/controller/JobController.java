@@ -1,11 +1,12 @@
 package com.gnaneshwari.jobportal.controller;
 
+import com.gnaneshwari.jobportal.dto.PageResponse;
 import com.gnaneshwari.jobportal.model.Job;
 import com.gnaneshwari.jobportal.service.JobService;
 import jakarta.validation.Valid;
-import org.springframework.http.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -23,8 +24,12 @@ public class JobController {
     }
 
     @GetMapping
-    public List<Job> getAll(@RequestParam(required = false) String title) {
-        return (title == null) ? jobService.getAllJobs() : jobService.searchByTitle(title);
+    public PageResponse<Job> getAll(@RequestParam(required = false) String title,
+                                    @RequestParam(required = false) String location,
+                                    @RequestParam(required = false) Double minSalary,
+                                    @RequestParam(defaultValue = "0") int page,
+                                    @RequestParam(defaultValue = "5") int size) {
+        return jobService.search(title, location, minSalary, page, size);
     }
 
     @GetMapping("/{id}")
