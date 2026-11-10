@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Portal</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; margin: 0; background: #f3f4f6; color: #1f2937; }
+  header { background: #1e40af; color: #fff; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+  main { max-width: 900px; margin: 20px auto; padding: 0 12px; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  input, select, textarea { padding: 8px; margin: 4px 4px 4px 0; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+  button { padding: 8px 14px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; cursor: pointer; font-size: 14px; }
+  button.secondary { background: #64748b; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .job h3 { margin: 0 0 4px; }
+  .muted { color: #64748b; font-size: 13px; }
+  #msg { position: fixed; top: 60px; right: 20px; padding: 10px 16px; border-radius: 6px; color: #fff; display: none; z-index: 10; }
+  .hidden { display: none; }
+  nav button { margin-right: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <strong>Job Portal</strong>
+  <span id="userInfo"></span>
+</header>
+<div id="msg"></div>
+
+<main>
+  <!-- LOGIN / REGISTER -->
+  <section id="authBox" class="card">
+    <h2>Login</h2>
+    <div class="row">
+      <input id="lEmail" placeholder="Email">
+      <input id="lPass" type="password" placeholder="Password">
+      <button onclick="login()">Login</button>
+    </div>
+    <h2>Register</h2>
+    <div class="row">
+      <input id="rName" placeholder="Name">
+      <input id="rEmail" placeholder="Email">
+      <input id="rPass" type="password" placeholder="Password (min 6)">
+      <select id="rRole">
+        <option value="JOB_SEEKER">Job Seeker</option>
+        <option value="RECRUITER">Recruiter</option>
+      </select>
+      <button onclick="register()">Register</button>
+    </div>
+  </section>
+
+  <!-- APP -->
+  <section id="appBox" class="hidden">
+    <nav class="card">
+      <button onclick="showJobs()">Jobs</button>
+      <button id="myAppsBtn" class="hidden" onclick="showMyApps()">My Applications</button>
+      <button id="postBtn" class="hidden" onclick="showPost()">Post a Job</button>
+      <button class="secondary" onclick="logout()">Logout</button>
+    </nav>
+
+    <div id="jobsView">
+      <div class="card row">
+        <input id="sTitle" placeholder="Title">
+        <input id="sLocation" placeholder="Location">
+        <input id="sSalary" type="number" placeholder="Min salary">
+        <button onclick="loadJobs(0)">Search</button>
+      </div>
+      <div id="jobList"></div>
+      <div class="row">
+        <button class="secondary" id="prevBtn" onclick="loadJobs(page-1)">Previous</button>
+        <span id="pageInfo"></span>
+        <button class="secondary" id="nextBtn" onclick="loadJobs(page+1)">Next</button>
+      </div>
+    </div>
+
+    <div id="myAppsView" class="hidden"></div>
+
+    <div id="postView" class="card hidden">
+      <h2>Post a Job</h2>
+      <div class="row">
+        <input id="pTitle" placeholder="Title">
+        <input id="pCompany" placeholder="Company">
+        <input id="pLocation" placeholder="Location">
+        <input id="pSalary" type="number" placeholder="Salary">
+      </div>
+      <textarea id="pDesc" rows="3" style="width:100%" placeholder="Description"></textarea>
+      <button onclick="postJob()">Post Job</button>
+    </div>
+
+    <div id="applicantsView" class="hidden"></div>
+  </section>
+</main>
+
+<script>
+let token = localStorage.getItem("token");
+let role = localStorage.getItem("role");
+let email = localStorage.getItem("email");
+let page = 0;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function toast(text, ok = true) {
+  const m = $("msg");
+  m.textContent = text;
+  m.style.background = ok ? "#16a34a" : "#dc2626";
+  m.style.display = "block";
+  setTimeout(() => m.style.display = "none", 3000);
+}
+
+async function api(path, method = "GET", body) {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetch("/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    if (res.status === 401 && token) { logout(); throw new Error("Session expired. Please login again."); }
+    if (res.status === 403) throw new Error("You are not allowed to do this.");
+    const text = data && (data.error || Object.values(data).join(", "));
+    throw new Error(text || "Error " + res.status);
+  }
+  return data;
+}
+
+async function register() {
+  try {
+    await api("/auth/register", "POST", {
+      name: $("rName").value, email: $("rEmail").value,
+      password: $("rPass").value, role: $("rRole").value });
+    toast("Registered! Now login.");
+  } catch (e) { toast(e.message, false); }
+}
+
+async function login() {
+  try {
+    const d = await api("/auth/login", "POST", { email: $("lEmail").value, password: $("lPass").value });
+    token = d.token; role = d.role; email = d.email;
+    localStorage.setItem("token", token);
+    localStorage.setItem("role", role);
+    localStorage.setItem("email", email);
+    render();
+  } catch (e) { toast(e.message, false); }
+}
+
+function logout() {
+  token = role = email = null;
+  localStorage.clear();
+  render();
+}
+
+function hideViews() {
+  ["jobsView", "myAppsView", "postView", "applicantsView"].forEach(v => $(v).classList.add("hidden"));
+}
+
+function render() {
+  const loggedIn = !!token;
+  $("authBox").classList.toggle("hidden", loggedIn);
+  $("appBox").classList.toggle("hidden", !loggedIn);
+  $("userInfo").textContent = loggedIn ? email + " (" + role + ")" : "";
+  if (loggedIn) {
+    $("myAppsBtn").classList.toggle("hidden", role !== "JOB_SEEKER");
+    $("postBtn").classList.toggle("hidden", role !== "RECRUITER");
+    showJobs();
+  }
+}
+
+function showJobs() { hideViews(); $("jobsView").classList.remove("hidden"); loadJobs(0); }
+function showPost() { hideViews(); $("postView").classList.remove("hidden"); }
+
+async function loadJobs(p) {
+  if (p < 0) return;
+  try {
+    const q = new URLSearchParams({ page: p, size: 5 });
+    if ($("sTitle").value) q.set("title", $("sTitle").value);
+    if ($("sLocation").value) q.set("location", $("sLocation").value);
+    if ($("sSalary").value) q.set("minSalary", $("sSalary").value);
+    const d = await api("/jobs?" + q);
+    page = d.page;
+    $("jobList").innerHTML = d.content.length ? d.content.map(j => `
+      <div class="card job">
+        <h3>${esc(j.title)}</h3>
+        <div>${esc(j.company)} &middot; ${esc(j.location)}</div>
+        <div class="muted">Salary: ${esc(j.salary)} &middot; ${esc(j.description)}</div>
+        <div style="margin-top:8px">
+          ${role === "JOB_SEEKER" ? `<button onclick="applyJob(${j.id})">Apply</button>` : ""}
+          ${role === "RECRUITER" ? `<button onclick="showApplicants(${j.id})">View Applicants</button>` : ""}
+        </div>
+      </div>`).join("") : '<div class="card">No jobs found.</div>';
+    $("pageInfo").textContent = "Page " + (d.page + 1) + " of " + Math.max(d.totalPages, 1);
+    $("prevBtn").disabled = d.page <= 0;
+    $("nextBtn").disabled = d.page + 1 >= d.totalPages;
+  } catch (e) { toast(e.message, false); }
+}
+
+async function applyJob(id) {
+  try { await api("/jobs/" + id + "/apply", "POST"); toast("Applied successfully!"); }
+  catch (e) { toast(e.message, false); }
+}
+
+async function showMyApps() {
+  try {
+    const list = await api("/applications/my");
+    hideViews();
+    $("myAppsView").classList.remove("hidden");
+    $("myAppsView").innerHTML = "<h2>My Applications</h2>" + (list.length ? list.map(a => `
+      <div class="card"><strong>${esc(a.jobTitle)}</strong>
+      <div class="muted">Applied at: ${esc(a.appliedAt)}</div></div>`).join("") : '<div class="card">No applications yet.</div>');
+  } catch (e) { toast(e.message, false); }
+}
+
+async function postJob() {
+  try {
+    await api("/jobs", "POST", {
+      title: $("pTitle").value, company: $("pCompany").value, location: $("pLocation").value,
+      salary: Number($("pSalary").value) || null, description: $("pDesc").value });
+    toast("Job posted!");
+    ["pTitle", "pCompany", "pLocation", "pSalary", "pDesc"].forEach(i => $(i).value = "");
+    showJobs();
+  } catch (e) { toast(e.message, false); }
+}
+
+async function showApplicants(jobId) {
+  try {
+    const list = await api("/jobs/" + jobId + "/applicants");
+    hideViews();
+    $("applicantsView").classList.remove("hidden");
+    $("applicantsView").innerHTML = `<h2>Applicants (Job #${jobId})</h2>` +
+      (list.length ? list.map(a => `
+        <div class="card"><strong>${esc(a.applicantName)}</strong> &middot; ${esc(a.applicantEmail)}
+        <div class="muted">Applied at: ${esc(a.appliedAt)}</div></div>`).join("") : '<div class="card">No applicants yet.</div>') +
+      '<button class="secondary" onclick="showJobs()">Back to jobs</button>';
+  } catch (e) { toast(e.message, false); }
+}
+
+render();
+</script>
+</body>
+</html>

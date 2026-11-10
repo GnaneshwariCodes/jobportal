@@ -29,7 +29,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())   // not needed for stateless token APIs
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-            	    .requestMatchers("/error").permitAll()
+            	    .requestMatchers("/", "/index.html","/error").permitAll()
             	    .requestMatchers("/api/auth/**").permitAll()
             	    .requestMatchers(HttpMethod.POST, "/api/jobs/*/apply").hasRole("JOB_SEEKER")
             	    .requestMatchers(HttpMethod.GET, "/api/jobs/*/applicants").hasRole("RECRUITER")
